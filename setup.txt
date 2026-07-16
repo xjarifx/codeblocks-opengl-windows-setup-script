@@ -58,7 +58,7 @@ $DesktopFreeGlut = Join-Path $DesktopPath "freeglut"
 $ProjectDir = Join-Path $DocumentsPath "OpenGLUniversalProject"
 $ProjectName = "OpenGLUniversalProject"
 
-$Url = "https://web.cs.dal.ca/~sbrooks/csci3161/reference/FreeGLUTSetup/freeglut.zip"
+$Url = "https://raw.githubusercontent.com/xjarifx/codeblocks-opengl-windows-setup-script/main/freeglut.zip"
 $ZipTarget = "$env:TEMP\freeglut_universal.zip"
 
 Write-Host "[+] Resolving environment paths dynamically..." -ForegroundColor Cyan
