@@ -1,0 +1,221 @@
+# =========================================================================
+# UNIVERSAL OPENGL / FREEGLUT BOOTSTRAP SCRIPT
+# Safe for deployment on GitHub - Works across different Windows devices
+# =========================================================================
+
+# -------------------------------------------------------------------------
+# Step 00b: Execution policy guard
+# When pasted into PowerShell, script-blocks/unsigned content is allowed
+# to run as commands. If run as a .ps1 file it may be blocked by policy.
+# This guard detects a restricted/blocked policy and instructs the user
+# how to re-launch with bypass. Works whether pasted or saved+run.
+# -------------------------------------------------------------------------
+if ($MyInvocation.Line -eq $null -and $MyInvocation.InvocationName -eq ".") {
+    # no-op: pasted content does not trigger this path
+}
+
+try {
+    $policy = Get-ExecutionPolicy -Scope Process
+    if ($policy -eq "Restricted" -or $policy -eq "AllSigned") {
+        Write-Host "[-] PowerShell execution policy ($policy) will block this script." -ForegroundColor Red
+        Write-Host "    Re-run PowerShell as Administrator (or any user) and execute:" -ForegroundColor Yellow
+        Write-Host "    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass" -ForegroundColor Cyan
+        Write-Host "    Then paste/run this script again." -ForegroundColor Cyan
+        Write-Host "    (Or launch once with: powershell -ExecutionPolicy Bypass -File setup.ps1)" -ForegroundColor Gray
+        Exit
+    }
+} catch {
+    # If we cannot read policy, proceed anyway
+}
+
+# 1. Dynamically target the running user's system folders.
+# Resolve via the Shell KnownFolder API so OneDrive-redirected
+# Desktop/Documents (and localized names) still resolve correctly.
+function Get-KnownFolderPath {
+    param([string]$Guid)
+    try {
+        $shell = New-Object -ComObject Shell.Application
+        $folder = $shell.NameSpace($Guid)
+        if ($folder) { return $folder.Self.Path }
+    } catch {}
+    return $null
+}
+
+$DesktopGuid   = "::{B4BFCC3A-DB2C-424C-B029-7FE99A87C641}"
+$DocumentsGuid = "::{FDD39AD0-238F-46AF-ADB4-6C85480369C7}"
+
+$DesktopPath = Get-KnownFolderPath $DesktopGuid
+if (-not $DesktopPath -or -not (Test-Path $DesktopPath)) {
+    $DesktopPath = [System.IO.Path]::Combine($env:USERPROFILE, "Desktop")
+}
+
+$DocumentsPath = Get-KnownFolderPath $DocumentsGuid
+if (-not $DocumentsPath -or -not (Test-Path $DocumentsPath)) {
+    $DocumentsPath = [System.IO.Path]::Combine($env:USERPROFILE, "Documents")
+}
+
+$DesktopFreeGlut = Join-Path $DesktopPath "freeglut"
+$ProjectDir = Join-Path $DocumentsPath "OpenGLUniversalProject"
+$ProjectName = "OpenGLUniversalProject"
+
+$Url = "https://web.cs.dal.ca/~sbrooks/csci3161/reference/FreeGLUTSetup/freeglut.zip"
+$ZipTarget = "$env:TEMP\freeglut_universal.zip"
+
+Write-Host "[+] Resolving environment paths dynamically..." -ForegroundColor Cyan
+Write-Host "    -> Target Desktop: $DesktopPath" -ForegroundColor Gray
+Write-Host "    -> Target Documents: $DocumentsPath" -ForegroundColor Gray
+
+# -------------------------------------------------------------------------
+# Step 00: Verify Code::Blocks + MinGW toolchain is available
+# -------------------------------------------------------------------------
+Write-Host "[*] Verifying Code::Blocks / MinGW installation..." -ForegroundColor Cyan
+
+$codeblocks = Get-Command codeblocks -ErrorAction SilentlyContinue
+if (-not $codeblocks) {
+    $cbPaths = @(
+        "${env:ProgramFiles}\CodeBlocks\codeblocks.exe",
+        "${env:ProgramFiles(x86)}\CodeBlocks\codeblocks.exe",
+        "$env:LOCALAPPDATA\Programs\CodeBlocks\codeblocks.exe"
+    )
+    $cbFound = $cbPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $cbFound) {
+        Write-Host "[-] Code::Blocks not found. Please install Code::Blocks (with MinGW) first." -ForegroundColor Red
+        Write-Host "    Download from https://www.codeblocks.org/downloads/" -ForegroundColor Gray
+        Exit
+    }
+}
+
+$gcc = Get-Command gcc -ErrorAction SilentlyContinue
+$mingwDirs = @(
+    "${env:ProgramFiles}\CodeBlocks\MinGW\bin\gcc.exe",
+    "${env:ProgramFiles(x86)}\CodeBlocks\MinGW\bin\gcc.exe",
+    "$env:LOCALAPPDATA\Programs\CodeBlocks\MinGW\bin\gcc.exe"
+)
+$mingwFound = $gcc -or ($mingwDirs | Where-Object { Test-Path $_ })
+
+if (-not $mingwFound) {
+    Write-Host "[-] MinGW gcc compiler not found." -ForegroundColor Red
+    Write-Host "    Install Code::Blocks with the bundled MinGW toolchain, then re-run." -ForegroundColor Gray
+    Exit
+}
+Write-Host "[+] Code::Blocks and MinGW gcc detected. Proceeding..." -ForegroundColor Green
+
+# -------------------------------------------------------------------------
+# Step 01: Conditional Download & Extraction
+# -------------------------------------------------------------------------
+if (!(Test-Path $DesktopFreeGlut)) {
+    Write-Host "[+] FreeGLUT dependency not found on Desktop. Downloading..." -ForegroundColor Cyan
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $ZipTarget -ErrorAction Stop
+        
+        $TempExtract = "$env:TEMP\fg_universal_temp"
+        if (Test-Path $TempExtract) { Remove-Item $TempExtract -Recurse -Force }
+        
+        Expand-Archive -Path $ZipTarget -DestinationPath $TempExtract -Force
+        Move-Item -Path "$TempExtract\freeglut" -Destination $DesktopFreeGlut -Force
+        
+        # Cleanup
+        Remove-Item $ZipTarget -Force
+        Remove-Item $TempExtract -Recurse -Force
+        Write-Host "[+] Dependency successfully set up on Desktop." -ForegroundColor Green
+    } catch {
+        Write-Host "[-] Critical Error: Failed to download dependencies. Check your internet connection." -ForegroundColor Red
+        Exit
+    }
+} else {
+    Write-Host "[*] FreeGLUT folder already exists on Desktop. Skipping download." -ForegroundColor Yellow
+}
+
+# -------------------------------------------------------------------------
+# Step 02: Conditional Project Directory Setup
+# -------------------------------------------------------------------------
+if (!(Test-Path $ProjectDir)) {
+    New-Item -ItemType Directory -Path $ProjectDir | Out-Null
+    Write-Host "[+] Created fresh project workspace inside Documents folder." -ForegroundColor Green
+}
+
+# Escape backslashes safely for the XML layout structure
+$DesktopFreeGlutEscaped = $DesktopFreeGlut.Replace("\", "\\")
+
+# -------------------------------------------------------------------------
+# Step 03: Generate Path-Independent Code::Blocks Configuration
+# -------------------------------------------------------------------------
+Write-Host "[+] Generating customized .cbp workspace structural map..." -ForegroundColor Cyan
+
+$CbpContent = @"
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="$ProjectName" />
+		<Option pch_mode="2" />
+		<Option compiler="gcc" />
+		<Build>
+			<Target title="Debug">
+				<Option output="bin/Debug/$ProjectName" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Debug/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-g" />
+					<Add directory="$DesktopFreeGlutEscaped/include" />
+				</Compiler>
+				<Linker>
+					<Add directory="$DesktopFreeGlutEscaped/lib/x64" />
+					<Add library="freeglut" />
+					<Add library="opengl32" />
+					<Add library="glu32" />
+				</Linker>
+			</Target>
+		</Build>
+		<Compiler>
+			<Add option="-Wall" />
+		</Compiler>
+		<Unit filename="main.c">
+			<Option virtualFolder="Headers/" />
+		</Unit>
+		<Extensions />
+	</Project>
+</CodeBlocks_project_file>
+"@
+
+$CbpContent | Out-File -FilePath "$ProjectDir\$ProjectName.cbp" -Encoding utf8
+
+# -------------------------------------------------------------------------
+# Step 04: Generate Boilerplate Source Code & Copy Runtime DLL
+# -------------------------------------------------------------------------
+$MainCContent = @"
+#include <GL/glut.h>
+
+void display() {
+    glClear(GL_COLOR_BUFFER_BIT);
+    glBegin(GL_TRIANGLES);
+        glColor3f(1.0f, 0.0f, 0.0f); glVertex2f(-0.5f, -0.5f);
+        glColor3f(0.0f, 1.0f, 0.0f); glVertex2f(0.5f, -0.5f);
+        glColor3f(0.0f, 0.0f, 1.0f); glVertex2f(0.0f, 0.5f);
+    glEnd();
+    glFlush();
+}
+
+int main(int argc, char** argv) {
+    glutInit(&argc, argv);
+    glutInitDisplayMode(GLUT_SINGLE | GLUT_RGB);
+    glutInitWindowSize(500, 500);
+    glutCreateWindow("Cross-Platform Script OpenGL Test");
+    glutDisplayFunc(display);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glutMainLoop();
+    return 0;
+}
+"@
+
+$MainCContent | Out-File -FilePath "$ProjectDir\main.c" -Encoding utf8
+
+# CRITICAL FIX FOR COMPILING: Copy freeglut.dll straight into the project folder 
+# This guarantees Windows finds the runtime library, even if they don't have Admin permissions to System32!
+Copy-Item -Path "$DesktopFreeGlut\bin\x64\freeglut.dll" -Destination "$ProjectDir\" -Force
+
+Write-Host "`n[SUCCESS] Environment completely customized for this PC!" -ForegroundColor Green
+Write-Host "Open Code::Blocks, import '$ProjectDir\$ProjectName.cbp', and run." -ForegroundColor Cyan
