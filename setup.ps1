@@ -121,20 +121,138 @@ if (-not (Test-Path "$projectDir\qwerty.cbp")) {
 
 @'
 #include <GL/glut.h>
+#include <math.h>
 
-void display(void) {
+#define PI 3.14159265358979323846
+
+void drawCircle(float cx, float cy, float r)
+{
+    glBegin(GL_TRIANGLE_FAN);
+    glVertex2f(cx, cy);
+
+    for (int i = 0; i <= 100; i++)
+    {
+        float angle = 2.0f * PI * i / 100.0f;
+        glVertex2f(cx + cos(angle) * r, cy + sin(angle) * r);
+    }
+
+    glEnd();
+}
+
+void display()
+{
     glClear(GL_COLOR_BUFFER_BIT);
+
+    // Sky
+    glColor3f(0.53f, 0.81f, 0.98f);
+    glBegin(GL_QUADS);
+        glVertex2f(0, 300);
+        glVertex2f(600, 300);
+        glVertex2f(600, 600);
+        glVertex2f(0, 600);
+    glEnd();
+
+    // Grass
+    glColor3f(0.2f, 0.7f, 0.2f);
+    glBegin(GL_QUADS);
+        glVertex2f(0, 0);
+        glVertex2f(600, 0);
+        glVertex2f(600, 300);
+        glVertex2f(0, 300);
+    glEnd();
+
+    // Sun
+    glColor3f(1.0f, 0.9f, 0.0f);
+    drawCircle(500, 500, 45);
+
+    // House body
+    glColor3f(0.9f, 0.75f, 0.55f);
+    glBegin(GL_QUADS);
+        glVertex2f(180, 180);
+        glVertex2f(420, 180);
+        glVertex2f(420, 360);
+        glVertex2f(180, 360);
+    glEnd();
+
+    // Roof
+    glColor3f(0.8f, 0.1f, 0.1f);
+    glBegin(GL_TRIANGLES);
+        glVertex2f(150, 360);
+        glVertex2f(450, 360);
+        glVertex2f(300, 480);
+    glEnd();
+
+    // Door
+    glColor3f(0.4f, 0.2f, 0.0f);
+    glBegin(GL_QUADS);
+        glVertex2f(270, 180);
+        glVertex2f(330, 180);
+        glVertex2f(330, 290);
+        glVertex2f(270, 290);
+    glEnd();
+
+    // Door knob
+    glColor3f(1.0f, 1.0f, 0.0f);
+    drawCircle(320, 235, 4);
+
+    // Left window
+    glColor3f(0.5f, 0.8f, 1.0f);
+    glBegin(GL_QUADS);
+        glVertex2f(205, 245);
+        glVertex2f(255, 245);
+        glVertex2f(255, 295);
+        glVertex2f(205, 295);
+    glEnd();
+
+    // Right window
+    glBegin(GL_QUADS);
+        glVertex2f(345, 245);
+        glVertex2f(395, 245);
+        glVertex2f(395, 295);
+        glVertex2f(345, 295);
+    glEnd();
+
+    // Window lines
+    glColor3f(0.0f, 0.0f, 0.0f);
+
+    glBegin(GL_LINES);
+
+        // Left window
+        glVertex2f(230,245); glVertex2f(230,295);
+        glVertex2f(205,270); glVertex2f(255,270);
+
+        // Right window
+        glVertex2f(370,245); glVertex2f(370,295);
+        glVertex2f(345,270); glVertex2f(395,270);
+
+    glEnd();
+
     glFlush();
 }
 
-int main(int argc, char** argv) {
+void init()
+{
+    glClearColor(1, 1, 1, 1);
+
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    gluOrtho2D(0, 600, 0, 600);
+}
+
+int main(int argc, char **argv)
+{
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_SINGLE | GLUT_RGB);
-    glutInitWindowSize(400, 400);
-    glutCreateWindow("Minimal Window");
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glutInitWindowSize(600, 600);
+    glutInitWindowPosition(200, 100);
+    glutCreateWindow("2D House - OpenGL");
+
+    init();
+
     glutDisplayFunc(display);
+
     glutMainLoop();
+
     return 0;
 }
 '@ | Set-Content "$projectDir\Untitled1.c"
@@ -150,5 +268,3 @@ Write-Host "========================================"
 Write-Host "OpenGL setup completed successfully!"
 Write-Host "Project location: $projectDir"
 Write-Host "========================================"
-
-Pause
