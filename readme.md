@@ -2,15 +2,15 @@
 
 A PowerShell bootstrap script that automatically sets up a ready-to-build
 OpenGL project using **Code::Blocks** (with the bundled **MinGW** toolchain)
-on 64-bit Windows. It downloads freeglut from this repository, wires up
-include/library paths, generates a `.cbp` project, and copies the runtime
-DLL so the project runs without admin rights.
+on 64-bit Windows. It downloads freeglut from this repository, wires up the
+include/library paths, generates a `.cbp` project, and copies the runtime DLL
+so the project runs without administrator rights.
 
 ---
 
 ## System Assumptions
 
-This script is designed for the following environment. Outside these
+The script is designed for the following environment. Outside these
 assumptions it may fail:
 
 | Assumption | Detail |
@@ -19,10 +19,10 @@ assumptions it may fail:
 | **Architecture** | **64-bit (x64) only** — links `lib/x64` and copies `bin/x64/freeglut.dll` |
 | **Code::Blocks** | Installed **with the bundled MinGW/GCC toolchain** (not the "no compiler" build) |
 | **Compiler** | MinGW `gcc` available on `PATH` or under `CodeBlocks\MinGW\bin` |
-| **Desktop/Documents** | Resolved via the Shell KnownFolder API, so **OneDrive-redirected** and **localized** (non-English) folder names both work. Falls back to `%USERPROFILE%\Desktop` and `%USERPROFILE%\Documents` if the API fails |
+| **Desktop / Documents** | Resolved via the Shell KnownFolder API, so **OneDrive-redirected** and **localized** (non-English) folder names both work. Falls back to `%USERPROFILE%\Desktop` and `%USERPROFILE%\Documents` if the API fails |
 | **Permissions** | No administrator rights required; everything is written under the user profile |
 | **Internet** | Required on first run to fetch `freeglut.zip` from GitHub |
-| **PowerShell policy** | If blocked, the script instructs how to re-run with `Bypass` (see Usage) |
+| **PowerShell policy** | If blocked, the script instructs how to re-run with `Bypass` (see Using Guide) |
 
 > **Note:** The script is intentionally x64-only. If you install a 32-bit
 > Code::Blocks/MinGW, linking against the x64 freeglut will fail.
@@ -35,7 +35,7 @@ Install these **before** running the script:
 
 1. **Code::Blocks with MinGW**
    - Download the **`codeblocks-<ver>-mingw-setup.exe`** bundle (it includes the GCC compiler):
-     https://www.codeblocks.org/downloads/
+     https://www.codeblocks.org/downloads/binaries/
    - During install, keep the default "MinGW" component selected.
    - Verify: open a terminal and run `gcc --version`. You should see a GCC version string.
 
@@ -45,8 +45,8 @@ Install these **before** running the script:
 3. **Internet connection**
    - Needed once, to download `freeglut.zip` from this repo.
 
-The script will **abort with a clear message** if Code::Blocks or `gcc` is
-missing, so you do not get a confusing later failure.
+The script **aborts with a clear message** if Code::Blocks or `gcc` is missing,
+so you do not hit a confusing failure later.
 
 ---
 
@@ -97,9 +97,40 @@ creates the project under your Documents folder.
 3. `Build` → `Build and run` (or press `F9`).
 4. A 500×500 window with a colored triangle should appear.
 
+> **Prefer the manual route?** The [Manual Setup](#manual-setup) section below
+> explains each step the script performs, in case you want to set it up by hand
+> or troubleshoot a specific piece.
+
 ---
 
-## Repo Layout
+## Manual Setup
+
+If you would rather configure Code::Blocks yourself (or the script does not fit
+your setup), perform these steps. Assume `freeglut` lives on your Desktop
+(`%USERPROFILE%\Desktop\freeglut`).
+
+**Step 01 — Runtime DLL**
+Copy `freeglut\bin\x64\freeglut.dll` → `C:\Windows\System32`
+*(The script instead copies it next to the executable, avoiding admin rights.)*
+
+**Step 02 — Header**
+Copy `freeglut\include\GL` → `C:\Program Files\CodeBlocks\MinGW\include\GL`
+*(create the `GL` folder inside `include` if missing).*
+
+**Step 03 — Library**
+Copy `freeglut\lib\x64\libfreeglut.a` (or `freeglut.lib`) →
+`C:\Program Files\CodeBlocks\MinGW\lib`
+
+**Step 04 — Project link settings**
+1. Create a new **Empty project** in Code::Blocks and add a `.c` source file.
+2. From the top menu, choose **Project** → **Build options...**
+3. Make sure the **project name** (not "Debug" or "Release") is selected.
+4. Go to **Linker settings** → **Link libraries**.
+5. Add `opengl32`, `glu32`, and `freeglut` one by one.
+
+---
+
+## Repository Layout
 
 ```
 freeglut/        Extracted freeglut binaries (committed for reference)
