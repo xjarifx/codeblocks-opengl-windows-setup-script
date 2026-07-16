@@ -1,24 +1,22 @@
 # =========================================================================
-# UNIVERSAL OPENGL / FREEGLUT BOOTSTRAP SCRIPT
-# Safe for deployment on GitHub - Works across different Windows devices
+# OPENGL / FREEGLUT BOOTSTRAP SCRIPT (x64, Code::Blocks + MinGW)
+# Downloads freeglut from the web into the OneDrive Downloads folder,
+# installs it system-wide (System32 + MinGW), and creates a ready-to-build
+# Code::Blocks project in the OneDrive Documents folder.
+# Assumes: 64-bit Windows, Code::Blocks installed WITH the MinGW toolchain.
 # =========================================================================
 
 # -------------------------------------------------------------------------
 # Step 00b: Execution policy guard
-# When pasted into PowerShell, script-blocks/unsigned content is allowed
-# to run as commands. If run as a .ps1 file it may be blocked by policy.
-# This guard detects a restricted/blocked policy and instructs the user
-# how to re-launch with bypass. Works whether pasted or saved+run.
+# When pasted into PowerShell, unsigned content runs as commands. If run as a
+# .ps1 file it may be blocked by policy; this guard tells the user how to
+# re-launch with bypass.
 # -------------------------------------------------------------------------
-if ($MyInvocation.Line -eq $null -and $MyInvocation.InvocationName -eq ".") {
-    # no-op: pasted content does not trigger this path
-}
-
 try {
     $policy = Get-ExecutionPolicy -Scope Process
     if ($policy -eq "Restricted" -or $policy -eq "AllSigned") {
         Write-Host "[-] PowerShell execution policy ($policy) will block this script." -ForegroundColor Red
-        Write-Host "    Re-run PowerShell as Administrator (or any user) and execute:" -ForegroundColor Yellow
+        Write-Host "    Re-run PowerShell and execute:" -ForegroundColor Yellow
         Write-Host "    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass" -ForegroundColor Cyan
         Write-Host "    Then paste/run this script again." -ForegroundColor Cyan
         Write-Host "    (Or launch once with: powershell -ExecutionPolicy Bypass -File setup.ps1)" -ForegroundColor Gray
@@ -28,9 +26,9 @@ try {
     # If we cannot read policy, proceed anyway
 }
 
-# 1. Dynamically target the running user's system folders.
-# Resolve via the Shell KnownFolder API so OneDrive-redirected
-# Desktop/Documents (and localized names) still resolve correctly.
+# -------------------------------------------------------------------------
+# Helper: resolve a Shell KnownFolder (OneDrive-redirected / localized safe)
+# -------------------------------------------------------------------------
 function Get-KnownFolderPath {
     param([string]$Guid)
     try {
@@ -41,12 +39,12 @@ function Get-KnownFolderPath {
     return $null
 }
 
-$DesktopGuid   = "::{B4BFCC3A-DB2C-424C-B029-7FE99A87C641}"
+$DownloadsGuid = "::{374DE290-123F-4565-9164-39C4925E467B}"
 $DocumentsGuid = "::{FDD39AD0-238F-46AF-ADB4-6C85480369C7}"
 
-$DesktopPath = Get-KnownFolderPath $DesktopGuid
-if (-not $DesktopPath -or -not (Test-Path $DesktopPath)) {
-    $DesktopPath = [System.IO.Path]::Combine($env:USERPROFILE, "Desktop")
+$DownloadsPath = Get-KnownFolderPath $DownloadsGuid
+if (-not $DownloadsPath -or -not (Test-Path $DownloadsPath)) {
+    $DownloadsPath = [System.IO.Path]::Combine($env:USERPROFILE, "Downloads")
 }
 
 $DocumentsPath = Get-KnownFolderPath $DocumentsGuid
@@ -54,95 +52,99 @@ if (-not $DocumentsPath -or -not (Test-Path $DocumentsPath)) {
     $DocumentsPath = [System.IO.Path]::Combine($env:USERPROFILE, "Documents")
 }
 
-$DesktopFreeGlut = Join-Path $DesktopPath "freeglut"
-$ProjectDir = Join-Path $DocumentsPath "OpenGLUniversalProject"
-$ProjectName = "OpenGLUniversalProject"
-
-$Url = "https://raw.githubusercontent.com/xjarifx/codeblocks-opengl-windows-setup-script/main/freeglut.zip"
-$ZipTarget = "$env:TEMP\freeglut_universal.zip"
-
-Write-Host "[+] Resolving environment paths dynamically..." -ForegroundColor Cyan
-Write-Host "    -> Target Desktop: $DesktopPath" -ForegroundColor Gray
-Write-Host "    -> Target Documents: $DocumentsPath" -ForegroundColor Gray
-
 # -------------------------------------------------------------------------
-# Step 00: Verify Code::Blocks + MinGW toolchain is available
+# Locate Code::Blocks + MinGW
 # -------------------------------------------------------------------------
-Write-Host "[*] Verifying Code::Blocks / MinGW installation..." -ForegroundColor Cyan
+$cbRoots = @(
+    "${env:ProgramFiles}\CodeBlocks",
+    "${env:ProgramFiles(x86)}\CodeBlocks",
+    "$env:LOCALAPPDATA\Programs\CodeBlocks"
+)
+$MingwRoot = $cbRoots | Where-Object { Test-Path "$_\MinGW\bin\gcc.exe" } | Select-Object -First 1
 
-$codeblocks = Get-Command codeblocks -ErrorAction SilentlyContinue
-if (-not $codeblocks) {
-    $cbPaths = @(
-        "${env:ProgramFiles}\CodeBlocks\codeblocks.exe",
-        "${env:ProgramFiles(x86)}\CodeBlocks\codeblocks.exe",
-        "$env:LOCALAPPDATA\Programs\CodeBlocks\codeblocks.exe"
-    )
-    $cbFound = $cbPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if (-not $cbFound) {
-        Write-Host "[-] Code::Blocks not found. Please install Code::Blocks (with MinGW) first." -ForegroundColor Red
-        Write-Host "    Download from https://www.codeblocks.org/downloads/" -ForegroundColor Gray
+if (-not $MingwRoot) {
+    # Fall back to gcc on PATH
+    $gcc = Get-Command gcc -ErrorAction SilentlyContinue
+    if (-not $gcc) {
+        Write-Host "[-] Code::Blocks with MinGW not found." -ForegroundColor Red
+        Write-Host "    Install Code::Blocks (mingw-setup bundle) then re-run." -ForegroundColor Gray
         Exit
     }
+    # Derive MinGW root from gcc location if possible
+    $gccDir = Split-Path -Parent $gcc.Source
+    $MingwRoot = Split-Path -Parent $gccDir
 }
 
-$gcc = Get-Command gcc -ErrorAction SilentlyContinue
-$mingwDirs = @(
-    "${env:ProgramFiles}\CodeBlocks\MinGW\bin\gcc.exe",
-    "${env:ProgramFiles(x86)}\CodeBlocks\MinGW\bin\gcc.exe",
-    "$env:LOCALAPPDATA\Programs\CodeBlocks\MinGW\bin\gcc.exe"
-)
-$mingwFound = $gcc -or ($mingwDirs | Where-Object { Test-Path $_ })
+$MingwInclude = Join-Path $MingwRoot "MinGW\include"
+$MingwLib     = Join-Path $MingwRoot "MinGW\lib"
+$System32     = Join-Path $env:SystemRoot "System32"
 
-if (-not $mingwFound) {
-    Write-Host "[-] MinGW gcc compiler not found." -ForegroundColor Red
-    Write-Host "    Install Code::Blocks with the bundled MinGW toolchain, then re-run." -ForegroundColor Gray
-    Exit
-}
-Write-Host "[+] Code::Blocks and MinGW gcc detected. Proceeding..." -ForegroundColor Green
+Write-Host "[+] Resolved environment paths..." -ForegroundColor Cyan
+Write-Host "    -> Downloads : $DownloadsPath" -ForegroundColor Gray
+Write-Host "    -> Documents : $DocumentsPath" -ForegroundColor Gray
+Write-Host "    -> MinGW     : $MingwRoot\MinGW" -ForegroundColor Gray
 
 # -------------------------------------------------------------------------
-# Step 01: Conditional Download & Extraction
+# Step 01: Download freeglut from the web into OneDrive Downloads (kept)
 # -------------------------------------------------------------------------
-if (!(Test-Path $DesktopFreeGlut)) {
-    Write-Host "[+] FreeGLUT dependency not found on Desktop. Downloading..." -ForegroundColor Cyan
+$Url       = "https://web.cs.dal.ca/~sbrooks/csci3161/reference/FreeGLUTSetup/freeglut.zip"
+$ZipTarget = Join-Path $DownloadsPath "freeglut.zip"
+$ExtractDir = Join-Path $DownloadsPath "freeglut"
+
+if (Test-Path $ExtractDir) {
+    Write-Host "[*] freeglut already present in Downloads. Skipping download." -ForegroundColor Yellow
+} else {
+    Write-Host "[+] Downloading freeglut into Downloads folder..." -ForegroundColor Cyan
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    
     try {
         Invoke-WebRequest -Uri $Url -OutFile $ZipTarget -ErrorAction Stop
-        
-        $TempExtract = "$env:TEMP\fg_universal_temp"
-        if (Test-Path $TempExtract) { Remove-Item $TempExtract -Recurse -Force }
-        
-        Expand-Archive -Path $ZipTarget -DestinationPath $TempExtract -Force
-        Move-Item -Path "$TempExtract\freeglut" -Destination $DesktopFreeGlut -Force
-        
-        # Cleanup
-        Remove-Item $ZipTarget -Force
-        Remove-Item $TempExtract -Recurse -Force
-        Write-Host "[+] Dependency successfully set up on Desktop." -ForegroundColor Green
+        Expand-Archive -Path $ZipTarget -DestinationPath $DownloadsPath -Force
+        Write-Host "[+] freeglut downloaded and extracted to: $ExtractDir" -ForegroundColor Green
+        Write-Host "    (zip kept at: $ZipTarget)" -ForegroundColor Gray
     } catch {
-        Write-Host "[-] Critical Error: Failed to download dependencies. Check your internet connection." -ForegroundColor Red
+        Write-Host "[-] Failed to download freeglut. Check your internet connection." -ForegroundColor Red
         Exit
     }
-} else {
-    Write-Host "[*] FreeGLUT folder already exists on Desktop. Skipping download." -ForegroundColor Yellow
 }
 
 # -------------------------------------------------------------------------
-# Step 02: Conditional Project Directory Setup
+# Step 02: Install freeglut system-wide
 # -------------------------------------------------------------------------
-if (!(Test-Path $ProjectDir)) {
+$SrcDll   = Join-Path $ExtractDir "bin\x64\freeglut.dll"
+$SrcInc   = Join-Path $ExtractDir "include\GL"
+$SrcLibX64 = Join-Path $ExtractDir "lib\x64"
+
+# Step 02a: freeglut.dll -> C:\Windows\System32 (requires admin)
+Write-Host "[*] Installing freeglut.dll to System32 (administrator required)..." -ForegroundColor Cyan
+try {
+    Copy-Item -Path $SrcDll -Destination (Join-Path $System32 "freeglut.dll") -Force
+    Write-Host "[+] freeglut.dll installed to System32." -ForegroundColor Green
+} catch {
+    Write-Host "[-] Could not copy to System32. Run PowerShell as Administrator." -ForegroundColor Red
+    Exit
+}
+
+# Step 02b: headers -> MinGW include\GL
+$DstInc = Join-Path $MingwInclude "GL"
+if (-not (Test-Path $DstInc)) { New-Item -ItemType Directory -Path $DstInc | Out-Null }
+Copy-Item -Path "$SrcInc\*" -Destination $DstInc -Force -Recurse
+Write-Host "[+] freeglut headers installed to: $DstInc" -ForegroundColor Green
+
+# Step 02c: library -> MinGW lib
+if (-not (Test-Path $MingwLib)) { New-Item -ItemType Directory -Path $MingwLib | Out-Null }
+Copy-Item -Path "$SrcLibX64\*" -Destination $MingwLib -Force -Recurse
+Write-Host "[+] freeglut library installed to: $MingwLib" -ForegroundColor Green
+
+# -------------------------------------------------------------------------
+# Step 03: Create Code::Blocks project in OneDrive Documents
+# -------------------------------------------------------------------------
+$ProjectName = "OpenGLUniversalProject"
+$ProjectDir  = Join-Path $DocumentsPath $ProjectName
+
+if (-not (Test-Path $ProjectDir)) {
     New-Item -ItemType Directory -Path $ProjectDir | Out-Null
-    Write-Host "[+] Created fresh project workspace inside Documents folder." -ForegroundColor Green
+    Write-Host "[+] Created project workspace: $ProjectDir" -ForegroundColor Green
 }
-
-# Escape backslashes safely for the XML layout structure
-$DesktopFreeGlutEscaped = $DesktopFreeGlut.Replace("\", "\\")
-
-# -------------------------------------------------------------------------
-# Step 03: Generate Path-Independent Code::Blocks Configuration
-# -------------------------------------------------------------------------
-Write-Host "[+] Generating customized .cbp workspace structural map..." -ForegroundColor Cyan
 
 $CbpContent = @"
 <?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
@@ -158,15 +160,10 @@ $CbpContent = @"
 				<Option object_output="obj/Debug/" />
 				<Option type="1" />
 				<Option compiler="gcc" />
-				<Compiler>
-					<Add option="-g" />
-					<Add directory="$DesktopFreeGlutEscaped/include" />
-				</Compiler>
 				<Linker>
-					<Add directory="$DesktopFreeGlutEscaped/lib/x64" />
-					<Add library="freeglut" />
 					<Add library="opengl32" />
 					<Add library="glu32" />
+					<Add library="freeglut" />
 				</Linker>
 			</Target>
 		</Build>
@@ -174,7 +171,7 @@ $CbpContent = @"
 			<Add option="-Wall" />
 		</Compiler>
 		<Unit filename="main.c">
-			<Option virtualFolder="Headers/" />
+			<Option virtualFolder="Sources/" />
 		</Unit>
 		<Extensions />
 	</Project>
@@ -184,7 +181,7 @@ $CbpContent = @"
 $CbpContent | Out-File -FilePath "$ProjectDir\$ProjectName.cbp" -Encoding utf8
 
 # -------------------------------------------------------------------------
-# Step 04: Generate Boilerplate Source Code & Copy Runtime DLL
+# Step 04: Generate boilerplate source code
 # -------------------------------------------------------------------------
 $MainCContent = @"
 #include <GL/glut.h>
@@ -203,7 +200,7 @@ int main(int argc, char** argv) {
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_SINGLE | GLUT_RGB);
     glutInitWindowSize(500, 500);
-    glutCreateWindow("Cross-Platform Script OpenGL Test");
+    glutCreateWindow("OpenGL freeglut Test");
     glutDisplayFunc(display);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glutMainLoop();
@@ -213,9 +210,5 @@ int main(int argc, char** argv) {
 
 $MainCContent | Out-File -FilePath "$ProjectDir\main.c" -Encoding utf8
 
-# CRITICAL FIX FOR COMPILING: Copy freeglut.dll straight into the project folder 
-# This guarantees Windows finds the runtime library, even if they don't have Admin permissions to System32!
-Copy-Item -Path "$DesktopFreeGlut\bin\x64\freeglut.dll" -Destination "$ProjectDir\" -Force
-
-Write-Host "`n[SUCCESS] Environment completely customized for this PC!" -ForegroundColor Green
-Write-Host "Open Code::Blocks, import '$ProjectDir\$ProjectName.cbp', and run." -ForegroundColor Cyan
+Write-Host "`n[SUCCESS] Setup complete!" -ForegroundColor Green
+Write-Host "Open Code::Blocks, open '$ProjectDir\$ProjectName.cbp', and press F9 to build & run." -ForegroundColor Cyan
