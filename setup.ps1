@@ -2,7 +2,7 @@
 Set-Location "$env:USERPROFILE\Downloads"
 
 # Download the ZIP
-$url = "https://web.cs.dal.ca/~sbrooks/csci3161/reference/FreeGLUTSetup/freeglut.zip"
+$url = "https://raw.githubusercontent.com/xjarifx/codeblocks-opengl-windows-setup-script/main/freeglut.zip"
 $output = "freeglut.zip"
 
 Invoke-WebRequest -Uri $url -OutFile $output
@@ -31,3 +31,11 @@ New-Item -ItemType Directory -Path $destinationGL -Force | Out-Null
 Copy-Item "$sourceGL\*" -Destination $destinationGL -Recurse -Force
 
 Write-Host "GL headers copied to $destinationGL"
+
+# Copy libfreeglut.a to the MinGW lib directory
+$sourceLib = "$env:USERPROFILE\Downloads\freeglut\freeglut\lib\x64\libfreeglut.a"
+$destinationLib = "C:\Program Files\CodeBlocks\MinGW\lib"
+
+Copy-Item -Path $sourceLib -Destination $destinationLib -Force
+
+Write-Host "libfreeglut.a copied to $destinationLib"
