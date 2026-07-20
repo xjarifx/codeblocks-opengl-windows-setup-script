@@ -11,7 +11,7 @@
 2. Run:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -Command "Invoke-RestMethod https://raw.githubusercontent.com/xjarifx/codeblocks-opengl-windows-setup-script/main/setup.ps1 | Invoke-Expression"
+powershell -ExecutionPolicy Bypass -Command "Invoke-RestMethod https://raw.githubusercontent.com/xjarifx/codeblocks-opengl-windows-setup-script/main/setup-v2.ps1 | Invoke-Expression"
 ```
 
 3. Open **Code::Blocks**.
